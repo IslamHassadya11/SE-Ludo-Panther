@@ -21,7 +21,11 @@ import javax.swing.Timer; // the Swing timer, not java.util.Timer
 public final class BoardPanel extends JPanel {
 
     private final BoardBackgroundPainter background = new BoardBackgroundPainter();
+    private final PieceLayer pieces = new PieceLayer();
+    private final PieceLayer.MoveAnimation animation = new PieceLayer.MoveAnimation();
+    private final EffectLayer effects = new EffectLayer();
     private Game game;
+    private Consumer<Piece> onPieceClicked = p -> { };
 
     /**
      * Creates an empty board view.
@@ -29,12 +33,33 @@ public final class BoardPanel extends JPanel {
     public BoardPanel() {
         setBackground(UiTheme.background());
         setPreferredSize(new Dimension(680, 680));
+        setToolTipText("");
+        MouseAdapter mouse = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                Piece piece = clickablePieceAt(e);
+                if (piece != null) {
+                    onPieceClicked.accept(piece);
+                }
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                setCursor(Cursor.getPredefinedCursor(clickablePieceAt(e) != null
+                        ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+            }
+        };
+        addMouseListener(mouse);
+        addMouseMotionListener(mouse);
     }
 
     /**
      * @param game match to display, or {@code null}
      */
     public void setGame(Game game) {
+        animation.stop();
+        effects.clear();
+        pieces.clear();
         background.invalidate();
         this.game = game;
         if (game != null) {
@@ -43,6 +68,77 @@ public final class BoardPanel extends JPanel {
             Animator.unsubscribe(this);
         }
         repaint();
+    }
+
+    /**
+     * @param movable pieces to highlight and accept clicks for
+     */
+    public void setSelectablePieces(Set<Piece> movable) {
+        pieces.setSelectable(movable);
+    }
+
+    /**
+     * @param handler called when a highlighted piece is clicked
+     */
+    public void setOnPieceClicked(Consumer<Piece> handler) {
+        this.onPieceClicked = handler;
+    }
+
+    /**
+     * @return {@code true} while a move animation is running
+     */
+    public boolean isAnimating() {
+        return animation.isRunning();
+    }
+
+    /**
+     * Animates an applied move as hops; afterwards shows bursts for captures, releases and finishes.
+     *
+     * @param move     the applied move
+     * @param captured pieces captured on the landing square
+     * @param onDone   called when the animation ends
+     */
+    public void animateMove(Move move, List<Piece> captured, Runnable onDone) {
+        List<Square> squares = move.traversedSquares();
+        if (squares.isEmpty()) {
+            onDone.run();
+            return;
+        }
+        animation.start(move, captured, () -> {
+            Square landing = squares.get(squares.size() - 1);
+            for (Piece victim : captured) {
+                effects.burst(landing, UiTheme.neonOf(victim.owner().color()), true);
+            }
+            if (move.piece().isFinished() || move.from() == Piece.IN_CASTLE) {
+                effects.burst(landing, UiTheme.neonOf(move.piece().owner().color()), move.piece().isFinished());
+            }
+            onDone.run();
+        });
+    }
+
+    /**
+     * Stops any running animation without calling its completion callback.
+     */
+    public void stopAnimation() {
+        animation.stop();
+    }
+
+    @Override
+    public String getToolTipText(MouseEvent event) {
+        Piece piece = pieces.pieceAt(event.getPoint(), false);
+        if (piece == null) {
+            return null;
+        }
+        Player owner = piece.owner();
+        String where = piece.isInCastle() ? "in the castle" : piece.isFinished() ? "home" : "on the board";
+        return owner.name() + "'s panther " + piece.number() + " (" + owner.color().name() + "), " + where;
+    }
+
+    /**
+     * Finds the highlighted piece under the mouse, if any; clicks elsewhere are ignored.
+     */
+    private Piece clickablePieceAt(MouseEvent e) {
+        return animation.isRunning() ? null : pieces.pieceAt(e.getPoint(), true);
     }
 
     @Override
@@ -62,6 +158,8 @@ public final class BoardPanel extends JPanel {
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         paintLedFrame(g2, geo);
         paintCurrentCastle(g2, geo);
+        pieces.paint(g2, game, geo, animation);
+        effects.paint(g2, geo);
         g2.dispose();
     }
 
@@ -92,6 +190,70 @@ public final class BoardPanel extends JPanel {
         RoundRectangle2D outer = new RoundRectangle2D.Double(r.getX() + pad, r.getY() + pad,
                 r.getWidth() - 2 * pad, r.getHeight() - 2 * pad, cell * 0.7, cell * 0.7);
         Glow.stroke(g2, outer, UiTheme.neonOf(current.color()), 2.4f, 0.4 + 0.6 * Animator.pulse(0.9));
+    }
+
+    /**
+     * Short light bursts on the board: captures, pieces leaving the castle and pieces reaching home. Purely visual.
+     */
+    private static final class EffectLayer {
+
+        private static final double EFFECT_MILLIS = 650;
+
+        /**
+         * One running flash on a square: where, in which color, when it started and whether it is the big
+         * capture/finish
+         * burst.
+         */
+        private record Effect(Square square, Color color, long start, boolean big) {
+        }
+
+        private final List<Effect> effects = new ArrayList<>();
+
+        /**
+         * @param square where the burst happens
+         * @param color  burst color
+         * @param big    larger burst (capture or finish)
+         */
+        void burst(Square square, Color color, boolean big) {
+            effects.add(new Effect(square, color, System.nanoTime(), big));
+        }
+
+        /**
+         * Removes all running bursts.
+         */
+        void clear() {
+            effects.clear();
+        }
+
+        /**
+         * Paints running bursts and drops finished ones.
+         *
+         * @param g2  graphics
+         * @param geo current geometry
+         */
+        void paint(Graphics2D g2, BoardGeometry geo) {
+            long now = System.nanoTime();
+            Iterator<Effect> it = effects.iterator();
+            while (it.hasNext()) {
+                Effect effect = it.next();
+                double p = (now - effect.start()) / 1e6 / EFFECT_MILLIS;
+                if (p >= 1) {
+                    it.remove();
+                    continue;
+                }
+                Point2D c = geo.center(effect.square().pos());
+                double radius = geo.cell() * (0.3 + (effect.big() ? 1.4 : 0.8) * Animator.ease(p));
+                Glow.stroke(g2, new Ellipse2D.Double(c.getX() - radius, c.getY() - radius, radius * 2, radius * 2),
+                        effect.color(), 2f, 1 - p);
+                int sparks = effect.big() ? 12 : 8;
+                for (int i = 0; i < sparks; i++) {
+                    double angle = i * 2 * Math.PI / sparks + p;
+                    double dist = radius * 1.1;
+                    Glow.led(g2, c.getX() + Math.cos(angle) * dist, c.getY() + Math.sin(angle) * dist, 2,
+                            effect.color(), 1 - p);
+                }
+            }
+        }
     }
 
     /**
@@ -469,4 +631,250 @@ public final class BoardPanel extends JPanel {
         }
     }
 
+    /**
+     * Paints every piece (in castles, on squares and while hopping), highlights the pieces the model says may move
+     * (FR-31) and remembers where each piece was drawn so clicks can be mapped back to pieces (min. 24 px, NFR-06).
+     */
+    private static final class PieceLayer {
+
+        private static final int MIN_HIT_SIZE = 24;
+
+        private final Map<Piece, Ellipse2D> hitAreas = new LinkedHashMap<>();
+        private Set<Piece> selectable = Set.of();
+
+        /**
+         * @param pieces pieces to highlight and accept clicks for
+         */
+        void setSelectable(Set<Piece> pieces) {
+            this.selectable = Set.copyOf(pieces);
+        }
+
+        /**
+         * Forgets selection and hit areas, e.g. when a new match starts.
+         */
+        void clear() {
+            selectable = Set.of();
+            hitAreas.clear();
+        }
+
+        /**
+         * @param point          a mouse position
+         * @param onlySelectable {@code true} to ignore pieces that may not move now
+         * @return the topmost piece drawn at that point, or {@code null}
+         */
+        Piece pieceAt(Point point, boolean onlySelectable) {
+            Piece found = null;
+            for (Map.Entry<Piece, Ellipse2D> entry : hitAreas.entrySet()) {
+                if ((!onlySelectable || selectable.contains(entry.getKey())) && entry.getValue().contains(point)) {
+                    found = entry.getKey();
+                }
+            }
+            return found;
+        }
+
+        /**
+         * @param g2        graphics
+         * @param game      the match
+         * @param geo       current geometry
+         * @param animation the running move animation (may be idle)
+         */
+        void paint(Graphics2D g2, Game game, BoardGeometry geo, MoveAnimation animation) {
+            hitAreas.clear();
+            boolean highlight = !animation.isRunning();
+            Piece moving = animation.movingPiece();
+            Map<Square, List<Piece>> bySquare = new LinkedHashMap<>();
+            for (Player player : game.players()) {
+                for (Piece piece : player.pieces()) {
+                    if (piece == moving) {
+                        continue;
+                    }
+                    Square square = animation.isPendingCapture(piece)
+                            ? animation.landingSquare() : piece.currentSquare();
+                    if (square == null) {
+                        Point2D slot = geo.castleSlot(game.board().castleArea(player.seat()), piece.number() - 1);
+                        paintPiece(g2, game, geo, piece, slot.getX(), slot.getY(), geo.cell() * 0.98, highlight);
+                    } else {
+                        bySquare.computeIfAbsent(square, k -> new ArrayList<>()).add(piece);
+                    }
+                }
+            }
+            for (Map.Entry<Square, List<Piece>> entry : bySquare.entrySet()) {
+                paintStack(g2, game, geo, entry.getKey(), entry.getValue(), highlight);
+            }
+            if (moving != null) {
+                MoveAnimation.Pose pose = animation.pose(geo, game.board());
+                Color color = UiTheme.neonOf(moving.owner().color());
+                Glow.led(g2, pose.trail().getX(), pose.trail().getY(), 3, color, pose.trailAlpha());
+                paintPiece(g2, game, geo, moving, pose.x(), pose.y(), geo.cell() * 0.9 * pose.sizeFactor(), false);
+            }
+        }
+
+        /**
+         * Several pieces on one square share it in a 2×2 or 3×3 arrangement; movable ones are drawn on top.
+         */
+        private void paintStack(Graphics2D g2, Game game, BoardGeometry geo, Square square, List<Piece> pieces,
+                                boolean highlight) {
+            pieces.sort((a, b) -> Boolean.compare(selectable.contains(a), selectable.contains(b)));
+            Rectangle2D r = geo.rect(square.pos());
+            double cell = geo.cell();
+            int n = pieces.size();
+            int k = n == 1 ? 1 : n <= 4 ? 2 : 3;
+            double d = cell * (k == 1 ? 0.9 : k == 2 ? 0.56 : 0.4);
+            for (int i = 0; i < n; i++) {
+                double x = r.getX() + ((i % k) + 0.5) * cell / k;
+                double y = r.getY() + ((i / k % k) + 0.5) * cell / k;
+                paintPiece(g2, game, geo, pieces.get(i), x, y, d, highlight);
+            }
+        }
+
+        /**
+         * Draws one panther piece, with a pulsing glow when it can be clicked.
+         */
+        private void paintPiece(Graphics2D g2, Game game, BoardGeometry geo, Piece piece, double cx, double cy,
+                           double d,
+                                boolean highlight) {
+            Player owner = piece.owner();
+            boolean active = highlight && selectable.contains(piece);
+            double bob = active ? -geo.cell() * 0.08 * Animator.pulse(1.4) : 0;
+            if (active) {
+                double w = d * 1.15 + 4 * Animator.pulse(1.4);
+                double floorY = cy + d * 0.4;
+                Glow.halo(g2, cx, floorY, w * 0.75, UiTheme.neonOf(owner.color()), 0.9);
+                Glow.stroke(g2, new Ellipse2D.Double(cx - w / 2, floorY - w * 0.17, w, w * 0.34), UiTheme.text(),
+                        2f, 0.9);
+            }
+            double seed = owner.seat().ordinal() * 4 + piece.number();
+            PantherPainter.paintPiece(g2, cx, cy + bob, d, UiTheme.colorOf(owner.color()), PantherPainter.blink(seed));
+            double hit = Math.max(d, MIN_HIT_SIZE);
+            hitAreas.put(piece, new Ellipse2D.Double(cx - hit / 2, cy + bob - hit / 2, hit, hit));
+        }
+
+        /**
+         * Hop animation of one move, square by square, finishing within one second regardless of distance (NFR-13).
+         * The model has already applied the move; this class only decides where to draw the moving piece meanwhile.
+         */
+        static final class MoveAnimation {
+
+            /**
+             * Where to draw the moving piece in the current frame.
+             *
+             * @param x           center x
+             * @param y           center y
+             * @param sizeFactor  size multiplier (the piece grows slightly at the top of a hop)
+             * @param trail       the square the piece just left, for a fading light trail
+             * @param trailAlpha  trail brightness 0–1
+             */
+            record Pose(double x, double y, double sizeFactor, Point2D trail, double trailAlpha) {
+            }
+
+            private Move move;
+            private List<Piece> captured = List.of();
+            private long startNanos;
+            private double millis;
+            private Timer end;
+
+            /**
+             * @param move     the applied move
+             * @param captured pieces captured on the landing square; they stay visible until the mover lands
+             * @param onLanded called once the piece has landed
+             */
+            void start(Move move, List<Piece> captured, Runnable onLanded) {
+                stop();
+                int squares = move.traversedSquares().size();
+                this.move = move;
+                this.captured = List.copyOf(captured);
+                this.millis = durationMillis(squares);
+                this.startNanos = System.nanoTime();
+                end = new Timer((int) millis + 15, e -> {
+                    stop();
+                    onLanded.run();
+                });
+                end.setRepeats(false);
+                end.start();
+            }
+
+            /**
+             * @param squares number of squares to hop over
+             * @return total animation time: ~130 ms per square, at least 260 ms, at most {@link
+             * GameConfig#MAX_MOVE_ANIMATION_MILLIS}
+             */
+            static double durationMillis(int squares) {
+                return Math.min(GameConfig.MAX_MOVE_ANIMATION_MILLIS, Math.max(260, squares * 130));
+            }
+
+            /**
+             * Cancels the animation without calling its completion callback.
+             */
+            void stop() {
+                if (end != null) {
+                    end.stop();
+                }
+                end = null;
+                move = null;
+                captured = List.of();
+            }
+
+            /**
+             * @return {@code true} while a piece is hopping
+             */
+            boolean isRunning() {
+                return move != null;
+            }
+
+            /**
+             * @return the hopping piece, or {@code null}
+             */
+            Piece movingPiece() {
+                return move == null ? null : move.piece();
+            }
+
+            /**
+             * @param piece any piece
+             * @return {@code true} if it was captured by this move and must still be drawn on the landing square
+             */
+            boolean isPendingCapture(Piece piece) {
+                return captured.contains(piece);
+            }
+
+            /**
+             * @return the square the moving piece lands on
+             */
+            Square landingSquare() {
+                List<Square> squares = move.traversedSquares();
+                return squares.get(squares.size() - 1);
+            }
+
+            /**
+             * @param geo   current geometry
+             * @param board the board (for the castle slot a released piece starts from)
+             * @return where to draw the moving piece now
+             */
+            Pose pose(BoardGeometry geo, Board board) {
+                List<Square> squares = move.traversedSquares();
+                double progress = Math.min(1, (System.nanoTime() - startNanos) / 1e6 / millis);
+                int n = squares.size();
+                double f = progress * n;
+                int segment = Math.min(n - 1, (int) f);
+                double u = progress >= 1 ? 1 : f - segment;
+                Point2D from = segment == 0 ? origin(geo, board) : geo.center(squares.get(segment - 1).pos());
+                Point2D to = geo.center(squares.get(segment).pos());
+                double eased = Animator.ease(u);
+                double hop = Math.sin(Math.PI * u);
+                double x = from.getX() + (to.getX() - from.getX()) * eased;
+                double y = from.getY() + (to.getY() - from.getY()) * eased - hop * geo.cell() * 0.45;
+                return new Pose(x, y, 1 + 0.18 * hop, from, 0.5 * (1 - u));
+            }
+
+            /**
+             * Where the animation starts: the piece's castle slot when it is released, otherwise the square it leaves.
+             */
+            private Point2D origin(BoardGeometry geo, Board board) {
+                Piece piece = move.piece();
+                if (move.from() == Piece.IN_CASTLE) {
+                    return geo.castleSlot(board.castleArea(piece.owner().seat()), piece.number() - 1);
+                }
+                return geo.center(piece.path().get(move.from()).pos());
+            }
+        }
+    }
 }
