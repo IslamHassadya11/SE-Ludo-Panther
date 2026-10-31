@@ -37,6 +37,8 @@ public final class Game {
     private final Clock clock;
     private final Instant startedAt;
     private final List<GameListener> listeners = new CopyOnWriteArrayList<>();
+    /** Players in the order they finished; the last unfinished player is added when the game ends. */
+    private final List<Player> ranking = new ArrayList<>();
 
     /** Index of the randomly chosen first player; a new round starts whenever play returns to this seat. */
     private final int firstPlayerIndex;
@@ -48,6 +50,7 @@ public final class Game {
     private List<Move> legalMoves = List.of();
     private int consecutiveSixes;
     private TurnNotice notice;
+    private Instant endedAt;
 
     /**
      * Creates a match and starts its clock (FR-54).
@@ -159,7 +162,9 @@ public final class Game {
      * Moves one of the current player's eligible pieces and then:
      * <ol>
      *     <li>sends a lone opponent on an unprotected landing square back to its castle (FR-33, FR-40);</li>
-     *     <li>gives another roll after a 6 (FR-27) or passes the turn (FR-19).</li>
+     *     <li>records the player's place if this was their fourth piece home (FR-41);</li>
+     *     <li>ends the game if only one player is still playing (FR-54), otherwise gives another roll after a 6
+     *         (FR-27) or passes the turn (FR-19).</li>
      * </ol>
      *
      * @param piece the piece the player clicked
@@ -173,18 +178,28 @@ public final class Game {
                 .filter(m -> m.piece() == piece)
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(piece + " cannot move with this roll"));
+        Player player = currentPlayer();
+
         piece.setProgress(move.to());
         // FR-40: capture first; special-square effects (questions/surprises) are resolved here in Iteration 2.
         List<Piece> captured = MoveRules.capturedBy(piece, players);
         captured.forEach(Piece::sendToCastle);
 
         boolean pieceFinished = piece.isFinished();
+        boolean playerFinished = pieceFinished && player.hasFinishedAll();
+        if (playerFinished) {
+            ranking.add(player);
+        }
         legalMoves = List.of();
-        boolean extraRoll = lastRoll.isSix();
-        Move.Result result = new Move.Result(move, List.copyOf(captured), pieceFinished, false, extraRoll);
+        boolean over = unfinishedPlayers().size() <= 1;
+        // A player who just finished has nothing left to move, so their 6 gives no extra roll.
+        boolean extraRoll = !over && !playerFinished && lastRoll.isSix();
+        Move.Result result = new Move.Result(move, List.copyOf(captured), pieceFinished, playerFinished, extraRoll);
         listeners.forEach(l -> l.pieceMoved(result));
 
-        if (extraRoll) {
+        if (over) {
+            finish();
+        } else if (extraRoll) {
             startRoll(false);
         } else {
             advanceTurn();
@@ -270,6 +285,25 @@ public final class Game {
     }
 
     /**
+     * Ends the match: the last player still playing ranks last (FR-54) and the clock stops.
+     */
+    private void finish() {
+        ranking.addAll(unfinishedPlayers());
+        endedAt = clock.instant();
+        phase = Phase.GAME_OVER;
+        List<Player> finalRanking = ranking();
+        Duration duration = elapsed();
+        listeners.forEach(l -> l.gameOver(finalRanking, duration));
+    }
+
+    /**
+     * Players who still have panthers on the way.
+     */
+    private List<Player> unfinishedPlayers() {
+        return players.stream().filter(p -> !p.hasFinishedAll()).toList();
+    }
+
+    /**
      * Guards every action so that, for example, a double click cannot roll twice.
      */
     private void requirePhase(Phase expected) {
@@ -322,6 +356,13 @@ public final class Game {
     }
 
     /**
+     * @return {@code true} once the match has ended
+     */
+    public boolean isOver() {
+        return phase == Phase.GAME_OVER;
+    }
+
+    /**
      * @return the most recent roll, or empty before the first roll
      */
     public Optional<DiceRoll> lastRoll() {
@@ -354,6 +395,20 @@ public final class Game {
      */
     public int consecutiveSixes() {
         return consecutiveSixes;
+    }
+
+    /**
+     * @return the players who finished so far, best first; after the game ends, the full final ranking (FR-55)
+     */
+    public List<Player> ranking() {
+        return List.copyOf(ranking);
+    }
+
+    /**
+     * @return the time since Start; it stops growing once the game is over (FR-04, FR-54)
+     */
+    public Duration elapsed() {
+        return Duration.between(startedAt, endedAt != null ? endedAt : clock.instant());
     }
 
     /**
