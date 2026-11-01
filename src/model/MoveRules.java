@@ -71,6 +71,23 @@ public final class MoveRules {
 
     /**
      * @param square  a square
+     * @param players all players
+     * @return pieces currently on the square (castle pieces excluded; finished pieces no longer affect play)
+     */
+    public static List<Piece> piecesOn(Square square, List<Player> players) {
+        List<Piece> result = new ArrayList<>();
+        for (Player p : players) {
+            for (Piece piece : p.pieces()) {
+                if (piece.isActive() && piece.currentSquare() == square) {
+                    result.add(piece);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @param square  a square
      * @param mover   the player who wants to enter or cross it
      * @param players all players
      * @return {@code true} if another player has two or more pieces there (Double Block, FR-35)
@@ -86,6 +103,34 @@ public final class MoveRules {
             }
         }
         return false;
+    }
+
+    /**
+     * Opponent pieces captured by a piece that has just landed: on an unprotected square, every opponent that
+     * has exactly one piece there is sent back (FR-33, FR-34).
+     *
+     * @param mover   the piece that landed
+     * @param players all players
+     * @return pieces to send to their castles
+     */
+    public static List<Piece> capturedBy(Piece mover, List<Player> players) {
+        Square square = mover.currentSquare();
+        if (square == null || square.isProtected()) {
+            return List.of();
+        }
+        Map<Player, List<Piece>> byOwner = new HashMap<>();
+        for (Piece piece : piecesOn(square, players)) {
+            if (piece.owner() != mover.owner()) {
+                byOwner.computeIfAbsent(piece.owner(), k -> new ArrayList<>()).add(piece);
+            }
+        }
+        List<Piece> captured = new ArrayList<>();
+        for (List<Piece> group : byOwner.values()) {
+            if (group.size() == 1) {
+                captured.add(group.get(0));
+            }
+        }
+        return captured;
     }
 
     /**
