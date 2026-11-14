@@ -72,6 +72,54 @@ class SquareEffectsTest {
         assertTrue(s.game.losesNextTurn(s.piece.owner()));
     }
 
+    /**
+     * "Jump to the finish": after OK the piece goes straight to its final home square (FR-48).
+     */
+    @Test
+    void jumpToFinishSendsThePieceHome() {
+        Landing s = landOn(Square.Type.SURPRISE, Surprise.JUMP_TO_FINISH);
+        assertEquals(s.target, s.piece.progress(), "nothing happens before OK");
+        s.game.acknowledgeSurprise();
+        assertEquals(s.piece.lastIndex(), s.piece.progress());
+    }
+
+    /**
+     * "Back to the castle": after OK the piece goes back to its castle (FR-50).
+     */
+    @Test
+    void backToCastleSendsThePieceToItsCastle() {
+        Landing s = landOn(Square.Type.SURPRISE, Surprise.BACK_TO_CASTLE);
+        assertEquals(s.target, s.piece.progress(), "nothing happens before OK");
+        s.game.acknowledgeSurprise();
+        assertTrue(s.piece.isInCastle());
+    }
+
+    /**
+     * "Extra roll": after OK the same player rolls once more, right away (FR-53).
+     */
+    @Test
+    void extraRollLetsTheSamePlayerRollAgain() {
+        Landing s = landOn(Square.Type.SURPRISE, Surprise.EXTRA_ROLL);
+        s.game.acknowledgeSurprise();
+        assertEquals(Game.Phase.AWAITING_ROLL, s.game.phase());
+        assertSame(s.piece.owner(), s.game.currentPlayer());
+    }
+
+    /**
+     * "Move an opponent back": after OK the player chooses an opponent piece, the step die is rolled and that piece
+     * goes back half of the roll, rounded up (FR-49).
+     */
+    @Test
+    void opponentBackMovesTheChosenPieceBack() {
+        Landing s = landOnWithOpponent(Surprise.OPPONENT_BACK, 12);
+        Piece victim = s.game.players().get(1).pieces().get(0);
+        s.game.acknowledgeSurprise();
+        assertEquals(Game.Phase.CHOOSING_VICTIM, s.game.phase());
+        assertTrue(s.game.victimChoices().contains(victim));
+        s.game.chooseVictim(victim);
+        assertEquals(12 - 2, victim.progress(), "a step roll of 4 moves the opponent back 2 squares");
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /**
@@ -102,6 +150,33 @@ class SquareEffectsTest {
             }
         }
         assertTrue(target > 0, "the Medium board has a " + type + " square without effects around it");
+        piece.setProgress(target - 3);
+        game.roll();
+        game.move(piece);
+        assertEquals(target, piece.progress());
+        return new Landing(game, piece, target);
+    }
+
+    /**
+     * Like {@link #landOn(Square.Type, Surprise)} on a surprise square, but first puts one piece of the second player
+     * on its own path, so the "move an opponent back" surprise has a piece to choose. After the move, the next
+     * scripted roll is a step roll of 4.
+     */
+    private static Landing landOnWithOpponent(Surprise surprise, int opponentProgress) {
+        Game game = game(new ScriptedDice().add(new Dice.Roll(3, 2)).add(new Dice.Roll(4, 1)), surprise);
+        game.players().get(1).pieces().get(0).setProgress(opponentProgress);
+        Piece piece = game.currentPlayer().pieces().get(0);
+        int target = -1;
+        for (int i = 6; i < piece.path().size() - 6 && target < 0; i++) {
+            boolean quiet = true;
+            for (int d = -3; d <= 3; d++) {
+                quiet &= d == 0 || plain(piece, i + d);
+            }
+            if (piece.path().get(i).type() == Square.Type.SURPRISE && quiet) {
+                target = i;
+            }
+        }
+        assertTrue(target > 0, "the Medium board has a SURPRISE square without effects around it");
         piece.setProgress(target - 3);
         game.roll();
         game.move(piece);
