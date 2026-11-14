@@ -185,8 +185,23 @@ public record Move(Piece piece, Kind kind, int from, int to) {
      * @return pieces to send to their castles
      */
     public static List<Piece> capturedBy(Piece mover, List<Player> players) {
-        // TODO T1.16 (step 14): eating a lone opponent, except on protected squares.
-        return List.of();
+        Square square = mover.currentSquare();
+        if (square == null || square.isProtected()) {
+            return List.of();
+        }
+        Map<Player, List<Piece>> byOwner = new HashMap<>();
+        for (Piece piece : piecesOn(square, players)) {
+            if (piece.owner() != mover.owner()) {
+                byOwner.computeIfAbsent(piece.owner(), k -> new ArrayList<>()).add(piece);
+            }
+        }
+        List<Piece> captured = new ArrayList<>();
+        for (List<Piece> group : byOwner.values()) {
+            if (group.size() == 1) {
+                captured.add(group.get(0));
+            }
+        }
+        return captured;
     }
 
     /**
