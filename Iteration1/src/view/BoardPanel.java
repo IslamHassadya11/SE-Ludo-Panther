@@ -129,7 +129,7 @@ public final class BoardPanel extends JPanel {
      * @param movable pieces to highlight and accept clicks for
      */
     public void setSelectablePieces(Set<Piece> movable) {
-        // TODO T1.14 (step 16): choosing a piece with the mouse.
+        pieces.setSelectable(movable);
     }
 
     /**
@@ -155,8 +155,30 @@ public final class BoardPanel extends JPanel {
      * @param onDone   called when the animation ends
      */
     public void animateMove(Move move, List<Piece> captured, Runnable onDone) {
-        // TODO T1.14 (step 16): the move animation.
-        onDone.run();
+        List<Square> squares = move.traversedSquares();
+        if (squares.isEmpty()) {
+            onDone.run();
+            return;
+        }
+        animation.start(move, captured, () -> {
+            pieces.pieceLanded(move.piece());
+            Square landing = squares.get(squares.size() - 1);
+            Point2D at = Pieces.centerOf(landing);
+            Player mover = move.piece().owner();
+            Color moverColor = Theme.neonOf(mover.color());
+            for (Piece victim : captured) {
+                effects.addRing(at, Theme.neonOf(victim.owner().color()), true);
+                // The eaten panther flies back to its castle.
+                pieces.flyBackToCastle(victim, at);
+            }
+            if (move.piece().isFinished() || move.from() == Piece.IN_CASTLE) {
+                effects.addRing(at, moverColor, move.piece().isFinished());
+            }
+            if (effectsOn) {
+                showLandingEffect(move, captured, landing, at, moverColor);
+            }
+            onDone.run();
+        });
     }
 
     /**
@@ -303,8 +325,7 @@ public final class BoardPanel extends JPanel {
      * Finds the highlighted piece under the mouse, if any; clicks elsewhere are ignored.
      */
     private Piece clickablePieceAt(MouseEvent e) {
-        // TODO T1.14 (step 16): choosing a piece with the mouse.
-        return null;
+        return animation.isRunning() ? null : pieces.pieceAt(e.getPoint(), true);
     }
 
     // ------------------------------------------------------------------ painting
@@ -433,7 +454,59 @@ public final class BoardPanel extends JPanel {
      * ending in an arrow head and a ring on the square where it would land. Once a panther is chosen it disappears.
      */
     private void paintPathPreview(Graphics2D g2) {
-        // TODO T1.14 (step 16): the arrow to the landing square.
+        if (hover == null || animation.isRunning() || game.phase() != Game.Phase.AWAITING_MOVE) {
+            return;
+        }
+        Move move = game.legalMoves().stream().filter(m -> m.piece() == hover).findFirst().orElse(null);
+        if (move == null || move.traversedSquares().isEmpty()) {
+            return;
+        }
+        Color color = Theme.neonOf(hover.owner().color());
+        Point3 start = Pieces.restingPlace(game, hover);
+        List<Point2D> points = new ArrayList<>();
+        points.add(new Point2D.Double(start.x(), start.y()));
+        for (Square square : move.traversedSquares()) {
+            Point2D next = Pieces.centerOf(square);
+            if (!next.equals(points.get(points.size() - 1))) {
+                points.add(next);
+            }
+        }
+        if (points.size() < 2) {
+            return;
+        }
+        Point2D end = points.get(points.size() - 1);
+        Point2D before = points.get(points.size() - 2);
+        // The arrow head is the end of the line: its tip is on the landing square and the line stops at its base, so
+        // the line never runs through the head.
+        double dx = end.getX() - before.getX();
+        double dy = end.getY() - before.getY();
+        double last = Math.hypot(dx, dy);
+        double ux = dx / last;
+        double uy = dy / last;
+        double headLength = Math.min(0.46, last * 0.8);
+        double headHalf = headLength * 0.62;
+        double baseX = end.getX() - ux * headLength;
+        double baseY = end.getY() - uy * headLength;
+        Path2D path = new Path2D.Double();
+        path.moveTo(points.get(0).getX(), points.get(0).getY());
+        for (int i = 1; i < points.size() - 1; i++) {
+            path.lineTo(points.get(i).getX(), points.get(i).getY());
+        }
+        // A little under the head's base, so no gap shows between the line and the head.
+        path.lineTo(baseX + ux * headLength * 0.15, baseY + uy * headLength * 0.15);
+        Theme.Glow.paintGlowStroke(g2, view.projectShape(path, 0.03), color, 3.2f, 0.9);
+        Path2D head = new Path2D.Double();
+        head.moveTo(end.getX(), end.getY());
+        head.lineTo(baseX - uy * headHalf, baseY + ux * headHalf);
+        head.lineTo(baseX + uy * headHalf, baseY - ux * headHalf);
+        head.closePath();
+        Shape headShape = view.projectShape(head, 0.03);
+        Theme.Glow.paintGlowStroke(g2, headShape, color, 1.6f, 1);
+        g2.setColor(color);
+        g2.fill(headShape);
+        double r = 0.42 + 0.06 * Theme.Motion.pulse(1.6);
+        Theme.Glow.paintGlowStroke(g2, view.projectShape(new Ellipse2D.Double(end.getX() - r, end.getY() - r, 2 * r, 2 * r), 0.03),
+                color, 2.6f, 1);
     }
 
     /**
