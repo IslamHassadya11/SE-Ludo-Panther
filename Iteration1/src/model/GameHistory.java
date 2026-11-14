@@ -28,6 +28,11 @@ public final class GameHistory {
             + "2nd_place_name,3rd_place_name,4rd_place_name,game_duration(HH:MM:SS)";
 
     private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("dd/MM/yyyy; HH:mm:ss");
+    /**
+     * Reads the time with or without a space after the semicolon: the template's header has the space
+     * ({@code 19/10/2026; 12:01:00}), its example row does not ({@code 19/10/2026;12:01:00}).
+     */
+    private static final DateTimeFormatter READ_TIMESTAMP = DateTimeFormatter.ofPattern("dd/MM/yyyy;[ ]HH:mm:ss");
     private static final int PLACES = 4;
 
     private final Path file;
@@ -120,7 +125,7 @@ public final class GameHistory {
         }
         int id = Integer.parseInt(cells.get(0).strip());
         Game.Level level = Game.Level.valueOf(cells.get(1).strip().toUpperCase(Locale.ROOT));
-        LocalDateTime finishedAt = LocalDateTime.parse(cells.get(2).strip(), TIMESTAMP);
+        LocalDateTime finishedAt = LocalDateTime.parse(cells.get(2).strip(), READ_TIMESTAMP);
         List<String> names = new ArrayList<>();
         for (int place = 0; place < PLACES; place++) {
             String name = cells.get(3 + place).strip();
