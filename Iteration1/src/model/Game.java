@@ -626,7 +626,17 @@ public final class Game {
      * last (FR-54); when it was quit, players who have not finished get no place.
      */
     private void finish() {
-        // TODO T1.18 (step 18): end the game and save the final ranking.
+        if (!quitEarly) {
+            unfinishedPlayers().stream().filter(p -> !ranking.contains(p)).forEach(ranking::add);
+        }
+        endedAt = clock.instant();
+        phase = Phase.GAME_OVER;
+        question = null;
+        lastAnswer = null;
+        surprise = null;
+        List<Player> finalRanking = ranking();
+        Duration duration = elapsed();
+        listeners.forEach(l -> l.gameOver(finalRanking, duration));
     }
 
     /**
@@ -655,8 +665,7 @@ public final class Game {
      *         match that was quit before anybody finished
      */
     public Optional<Player> winner() {
-        // TODO T1.18 (step 18): the winner.
-        return Optional.empty();
+        return ranking.isEmpty() ? Optional.empty() : Optional.of(ranking.get(0));
     }
 
     /**
@@ -803,8 +812,7 @@ public final class Game {
      *         match that was quit only the players who finished have a place.
      */
     public List<Player> ranking() {
-        // TODO T1.18 (step 18): the final ranking.
-        return List.of();
+        return List.copyOf(ranking);
     }
 
     /**
@@ -1572,8 +1580,7 @@ public final class Game {
 
         @Override
         public List<Player> ranking() {
-            // TODO T1.18 (step 18): the final ranking.
-            return List.of();
+            return Game.this.ranking();
         }
 
         @Override
@@ -1583,8 +1590,7 @@ public final class Game {
 
         @Override
         public Optional<Player> winner() {
-            // TODO T1.18 (step 18): the winner.
-            return Optional.empty();
+            return Game.this.winner();
         }
 
         @Override
