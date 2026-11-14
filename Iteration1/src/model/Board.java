@@ -318,8 +318,36 @@ public final class Board {
      */
     private static Map<Integer, Square.Type> placeSpecialSquares(Game.Level level, List<Integer> ordinary, RandomGenerator rng,
                                                                 Map<Integer, Game.Level> questionLevels) {
-        // TODO T1.08 (step 8): place the random star, question and surprise squares.
-        return Map.of();
+        Map<Square.Type, Integer> counts = new EnumMap<>(Square.Type.class);
+        counts.put(Square.Type.STAR, level.protectionSquares());
+        counts.put(Square.Type.QUESTION, level.questionSquares());
+        counts.put(Square.Type.SURPRISE, level.surpriseSquares());
+        int total = counts.values().stream().mapToInt(Integer::intValue).sum();
+        if (total > ordinary.size()) {
+            throw new IllegalArgumentException("Need " + total + " special squares but only "
+                    + ordinary.size() + " ordinary squares are available");
+        }
+        List<Integer> shuffled = new ArrayList<>(ordinary);
+        Collections.shuffle(shuffled, rng);
+        Map<Integer, Square.Type> specials = new HashMap<>();
+        int next = 0;
+        for (Map.Entry<Square.Type, Integer> entry : counts.entrySet()) {
+            for (int i = 0; i < entry.getValue(); i++) {
+                specials.put(shuffled.get(next++), entry.getKey());
+            }
+        }
+        List<Integer> questions = new ArrayList<>();
+        specials.forEach((index, type) -> {
+            if (type == Square.Type.QUESTION) {
+                questions.add(index);
+            }
+        });
+        Collections.sort(questions);
+        Collections.shuffle(questions, rng);
+        for (int i = 0; i < questions.size(); i++) {
+            questionLevels.put(questions.get(i), Game.Level.values()[i / level.questionSquaresPerDifficulty()]);
+        }
+        return specials;
     }
 
     /**
