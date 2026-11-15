@@ -1,0 +1,6 @@
+This file is written for the course staff when testing the ADMIN LOGIN 
+----------------------------------------------------------------------
+
+Username: admin
+
+Password: PantherLudo-Admin-2026
