@@ -420,9 +420,10 @@ public final class QuestionBank {
     }
 
     /**
-     * The questions the bank starts with on the very first run (FR-59): the 27 questions of questions_Panther.xlsx
-     * (5 easy, 10 medium, 12 hard) about architectural patterns. After that first run the questions live only in the
-     * encrypted bank file and the admin can change them.
+     * The questions the bank starts with on the very first run (FR-59): 63 questions. 36 of them, 12 per difficulty,
+     * are about Agile, MVC, design patterns, quality assurance and software design; the other 27 are the questions of
+     * questions_Panther.xlsx (5 easy, 10 medium, 12 hard) about architectural patterns. After that first run the
+     * questions live only in the encrypted bank file and the admin can change them.
      */
     static final class DefaultQuestions {
 
@@ -437,6 +438,161 @@ public final class QuestionBank {
          */
         static List<Question> all() {
             List<Question> list = new ArrayList<>();
+            // ================================================================ general questions (12 per difficulty)
+            // ---------------------------------------------------------------- easy
+            add(list, EASY, AGILE, "In Scrum, what is a Sprint?",
+                    0, "A short, fixed-length period in which the team builds a usable increment",
+                    "A meeting where managers assign tasks", "The final test phase before release",
+                    "A document that lists all requirements",
+                    "A Sprint is a time-box (usually 1-4 weeks) that ends with a potentially releasable increment.");
+            add(list, EASY, AGILE, "Who is responsible for ordering the Product Backlog in Scrum?",
+                    1, "The Scrum Master", "The Product Owner", "The development team", "The customer's lawyer",
+                    "The Product Owner owns the Product Backlog and decides the order of its items.");
+            add(list, EASY, AGILE, "What is the main purpose of the Daily Scrum?",
+                    2, "To report hours to the manager", "To demo the product to the customer",
+                    "To inspect progress toward the Sprint Goal and plan the next day",
+                    "To write the requirements document",
+                    "The Daily Scrum is a short daily meeting where developers synchronize and adapt their plan.");
+            add(list, EASY, MVC, "In the MVC pattern, which part holds the data and the rules of the application?",
+                    0, "The Model", "The View", "The Controller", "The Compiler",
+                    "The Model contains the state and the business logic, independent of the user interface.");
+            add(list, EASY, MVC, "In MVC, what is the job of the View?",
+                    1, "To store data in files", "To display the model's data to the user",
+                    "To decide the business rules", "To compile the program",
+                    "The View only presents information; it does not decide the rules.");
+            add(list, EASY, DESIGN_PATTERNS, "Which design pattern makes sure a class has only one instance?",
+                    3, "Observer", "Factory", "Strategy", "Singleton",
+                    "Singleton gives a class exactly one instance and a global point of access to it.");
+            add(list, EASY, DESIGN_PATTERNS, "Which design pattern lets objects be notified when another object changes?",
+                    0, "Observer", "Singleton", "Adapter", "Builder",
+                    "In Observer, subscribers register with a subject and are notified of its changes.");
+            add(list, EASY, QUALITY_ASSURANCE, "What is a unit test?",
+                    2, "A test done by the customer at the end", "A test of the whole system under heavy load",
+                    "A test of one small piece of code, such as a single method or class",
+                    "A review of the user manual",
+                    "Unit tests check the smallest testable parts of the code in isolation.");
+            add(list, EASY, QUALITY_ASSURANCE, "What is a bug (defect) in software?",
+                    1, "A new feature request", "A flaw that makes the software behave differently than expected",
+                    "A comment in the code", "A type of variable",
+                    "A defect is any deviation between the actual and the expected behavior.");
+            add(list, EASY, SOFTWARE_DESIGN, "What does a UML class diagram show?",
+                    3, "The order of messages over time", "The screens of the program",
+                    "The hardware the program runs on", "Classes, their attributes, methods and relationships",
+                    "Class diagrams describe the static structure of a system.");
+            add(list, EASY, SOFTWARE_DESIGN, "What does 'encapsulation' mean in object-oriented design?",
+                    0, "Hiding an object's internal data behind methods", "Copying code between classes",
+                    "Running code in parallel", "Writing all code in one class",
+                    "Encapsulation keeps fields private and exposes behavior through a public interface.");
+            add(list, EASY, AGILE, "What does the Agile Manifesto value more than comprehensive documentation?",
+                    2, "Following a plan", "Contract negotiation", "Working software", "Processes and tools",
+                    "The Manifesto values working software over comprehensive documentation.");
+            // ---------------------------------------------------------------- medium
+            add(list, MEDIUM, AGILE, "What is the 'Definition of Done' in Scrum?",
+                    1, "The date when the project ends", "A shared checklist an increment must meet to be complete",
+                    "The list of all bugs", "The customer's signature on the contract",
+                    "The Definition of Done is a formal description of the quality required for an increment.");
+            add(list, MEDIUM, AGILE, "What is a user story usually written like?",
+                    0, "As a <role>, I want <goal> so that <benefit>", "IF condition THEN action ELSE error",
+                    "Class name, attributes, methods", "Input, process, output, storage",
+                    "User stories describe a need from the user's point of view in this short template.");
+            add(list, MEDIUM, AGILE, "What happens in a Sprint Retrospective?",
+                    3, "The customer accepts the product", "The Product Backlog is created for the first time",
+                    "The code is deployed to production", "The team reflects on how it worked and plans improvements",
+                    "The Retrospective looks at people, processes and tools to improve the next Sprint.");
+            add(list, MEDIUM, MVC, "In MVC, what does the Controller do?",
+                    2, "It draws the buttons", "It saves the database schema",
+                    "It receives user input and translates it into actions on the model",
+                    "It replaces the model when needed",
+                    "The Controller handles input and tells the Model what to do; the View then shows the result.");
+            add(list, MEDIUM, MVC, "Why should game rules be in the Model and not in the View?",
+                    1, "Because Views cannot contain code",
+                    "So the rules can be tested and reused without the user interface",
+                    "Because Java requires it", "To make the program run faster",
+                    "Separating rules from the UI makes them testable and lets the UI change without changing rules.");
+            add(list, MEDIUM, DESIGN_PATTERNS,
+                    "Which pattern defines a family of algorithms and makes them interchangeable?",
+                    0, "Strategy", "Singleton", "Facade", "Observer",
+                    "Strategy puts each algorithm in its own class behind a common interface.");
+            add(list, MEDIUM, DESIGN_PATTERNS, "What is the main benefit of the Factory pattern?",
+                    2, "It makes every class a singleton", "It removes the need for interfaces",
+                    "Code creates objects without depending on their concrete classes",
+                    "It speeds up garbage collection",
+                    "A Factory hides which concrete class is created, so callers depend only on an abstraction.");
+            add(list, MEDIUM, QUALITY_ASSURANCE, "What is the difference between verification and validation?",
+                    1, "There is no difference",
+                    "Verification: are we building it right? Validation: are we building the right product?",
+                    "Verification is done by users, validation by developers", "Validation happens only before coding",
+                    "Verification checks conformance to the specification; validation checks it meets the user's needs.");
+            add(list, MEDIUM, QUALITY_ASSURANCE, "What is regression testing?",
+                    3, "Testing only new features", "Testing the program on old computers",
+                    "Testing performance under load", "Re-running tests to check that changes did not break old behavior",
+                    "Regression tests catch defects introduced into features that used to work.");
+            add(list, MEDIUM, SOFTWARE_DESIGN, "What does 'high cohesion' mean for a class?",
+                    0, "Its methods and data are closely related to one purpose", "It has many public fields",
+                    "It depends on many other classes", "It has more than 1000 lines",
+                    "A cohesive class has one clear responsibility, which makes it easier to understand and change.");
+            add(list, MEDIUM, SOFTWARE_DESIGN, "Why is 'low coupling' desirable between modules?",
+                    2, "It makes the code longer", "It forces all modules to share global variables",
+                    "A change in one module affects others less", "It removes the need for testing",
+                    "Loosely coupled modules can be changed, tested and reused independently.");
+            add(list, MEDIUM, QUALITY_ASSURANCE, "In black-box testing, what does the tester rely on?",
+                    1, "The source code", "The specification of inputs and expected outputs",
+                    "The compiler's warnings", "The number of lines of code",
+                    "Black-box testing designs tests from requirements without looking at the internal code.");
+            // ---------------------------------------------------------------- hard
+            add(list, HARD, AGILE, "What does 'velocity' measure in Scrum?",
+                    2, "How fast the program runs", "The number of bugs found per day",
+                    "The amount of work a team completes in a Sprint, used to forecast",
+                    "The time of a single Daily Scrum",
+                    "Velocity is the sum of estimates of the items finished per Sprint; it helps plan future Sprints.");
+            add(list, HARD, AGILE, "In Scrum, who may cancel a Sprint?",
+                    3, "Any developer", "The Scrum Master alone", "The customer's manager", "Only the Product Owner",
+                    "Only the Product Owner has the authority to cancel a Sprint, when its goal becomes obsolete.");
+            add(list, HARD, AGILE, "What is the purpose of the INVEST criteria for user stories?",
+                    0, "To check that stories are Independent, Negotiable, Valuable, Estimable, Small and Testable",
+                    "To calculate the project budget", "To choose the programming language",
+                    "To decide who joins the team",
+                    "INVEST is a checklist for writing good, plannable user stories.");
+            add(list, HARD, MVC, "In MVC with the Observer pattern, how does the View learn that the Model changed?",
+                    1, "The View checks the database every second", "The Model notifies its registered listeners",
+                    "The Controller redraws every pixel", "The user presses Refresh",
+                    "The Model publishes events to observers, so it never depends on concrete View classes.");
+            add(list, HARD, MVC, "Which statement about MVC dependencies is correct?",
+                    2, "The Model must import the Swing View classes", "The View must never read the Model",
+                    "The Model should not depend on the View or the Controller",
+                    "The Controller must contain all game rules",
+                    "Keeping the Model independent lets it be tested and reused with another user interface.");
+            add(list, HARD, DESIGN_PATTERNS,
+                    "Which pattern converts the interface of a class into another interface clients expect?",
+                    3, "Decorator", "Composite", "Observer", "Adapter",
+                    "An Adapter wraps an existing class so it can be used through a different interface.");
+            add(list, HARD, DESIGN_PATTERNS, "Which pattern adds responsibilities to an object dynamically by wrapping it?",
+                    0, "Decorator", "Singleton", "Factory Method", "Template Method",
+                    "A Decorator implements the same interface and adds behavior before or after delegating.");
+            add(list, HARD, DESIGN_PATTERNS, "What is a common drawback of the Singleton pattern?",
+                    1, "It cannot have methods", "It hides dependencies and makes unit testing harder",
+                    "It creates too many objects", "It only works in C++",
+                    "Global access hides who uses the singleton, and shared state makes tests depend on each other.");
+            add(list, HARD, QUALITY_ASSURANCE, "What does 100% statement coverage guarantee?",
+                    2, "That the program has no bugs", "That every path through the code was tested",
+                    "That every statement was executed at least once by the tests",
+                    "That every requirement was validated",
+                    "Statement coverage says nothing about all branch combinations or missing requirements.");
+            add(list, HARD, QUALITY_ASSURANCE, "What is boundary value analysis?",
+                    0, "Testing at and around the edges of valid input ranges", "Measuring the size of the code",
+                    "Checking the limits of the hardware", "Reviewing the project budget",
+                    "Many defects occur at the edges, e.g. lengths 0, 1, 15 and 16 for a 1-15 character name.");
+            add(list, HARD, SOFTWARE_DESIGN, "What does the Open/Closed Principle state?",
+                    3, "Classes must be public", "Files must be closed after reading",
+                    "A class should have only one reason to change",
+                    "Software entities should be open for extension but closed for modification",
+                    "New behavior should be added by extension (e.g. new classes), not by editing tested code.");
+            add(list, HARD, SOFTWARE_DESIGN, "What does the Liskov Substitution Principle require?",
+                    1, "Every class must have a parent class",
+                    "Objects of a subclass must be usable wherever the base class is expected",
+                    "Interfaces must have one method only", "Subclasses must override every method",
+                    "A subtype must keep the base type's promises, so substituting it does not break clients.");
+            // ================================================================ the 27 questions of questions_Panther.xlsx
             // ---------------------------------------------------------------- easy
             // A1 - Event-driven
             add(list, EASY, SOFTWARE_DESIGN, "What triggers an action in Event-Driven Architecture?",
