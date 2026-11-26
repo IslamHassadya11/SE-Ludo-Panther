@@ -1,0 +1,13 @@
+PANTHER LUDO - ADMINISTRATOR LOGIN CREDENTIALS
+==============================================================================
+
+The game comes with one administrator account. To log in, choose "I'm the Admin"
+on the welcome screen and enter:
+
+    Username:  admin
+    Password:  PantherLudo-Admin-2026
+
+After logging in, the username and the password can be changed on the
+Edit Profile screen.
+
+==============================================================================
