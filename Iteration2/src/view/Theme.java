@@ -60,10 +60,6 @@ public final class Theme {
         public static final Font BOLD = new Font(FAMILY, Font.BOLD, 15);
         /** Section headings. */
         public static final Font HEADING = new Font(FAMILY, Font.BOLD, 20);
-        /** Screen titles. */
-        public static final Font TITLE = new Font(FAMILY, Font.BOLD, 44);
-        /** Current player's name; at least 16 pt (NFR-03). */
-        public static final Font CURRENT_PLAYER = new Font(FAMILY, Font.BOLD, 22);
         /** Small game clock in the top bar. */
         public static final Font CLOCK = new Font(Font.MONOSPACED, Font.BOLD, 15);
         /** Buttons. */
@@ -97,7 +93,8 @@ public final class Theme {
         }
 
         /**
-         * The comic font if it has letters for this text (it has none for Hebrew or Arabic), otherwise the bold font.
+         * The comic font if it has letters for this text; for Hebrew, Arabic and Russian, the comic display font of
+         * that script; otherwise the bold font.
          *
          * @param size point size
          * @param text the text that will be written
@@ -105,7 +102,17 @@ public final class Theme {
          */
         public static Font comicFont(float size, String text) {
             Font font = comicFont(size);
-            return font.canDisplayUpTo(text) == -1 ? font : baseFont(size, true);
+            if (font.canDisplayUpTo(text) == -1) {
+                return font;
+            }
+            // Bangers has only Latin letters; Hebrew, Arabic and Russian get a comic display font of their own.
+            for (Resources.Script script : Resources.Script.values()) {
+                Font local = Resources.scriptFont(script);
+                if (local != null && script.uses(text) && local.canDisplayUpTo(text) == -1) {
+                    return script.derive(local, size);
+                }
+            }
+            return baseFont(size, true);
         }
 
         /**
@@ -177,6 +184,73 @@ public final class Theme {
             /**
              * @return the Bangers font at 1 pt, or {@code null}
              */
+            /**
+             * The comic display fonts for the scripts that Bangers does not have (all SIL Open Font License, see
+             * fonts/OFL-Karantina.txt, fonts/OFL-Lalezar.txt and fonts/OFL-Rubik.txt).
+             */
+            enum Script {
+                /** Hebrew letters: Karantina Bold, tall and narrow like Bangers, so a little bigger. */
+                HEBREW("fonts/Karantina-Bold.ttf", '\u0590', '\u05FF', 1.18f, 0f),
+                /** Arabic letters: Lalezar. */
+                ARABIC("fonts/Lalezar-Regular.ttf", '\u0600', '\u06FF', 1.0f, 0f),
+                /** Russian letters: Rubik Black, slanted like the comic letters of Bangers. */
+                CYRILLIC("fonts/Rubik-Black.ttf", '\u0400', '\u04FF', 0.92f, -0.12f);
+
+                private final String file;
+                private final char first;
+                private final char last;
+                private final float scale;
+                private final float slant;
+
+                Script(String file, char first, char last, float scale, float slant) {
+                    this.file = file;
+                    this.first = first;
+                    this.last = last;
+                    this.scale = scale;
+                    this.slant = slant;
+                }
+
+                /**
+                 * @param text a text
+                 * @return {@code true} if it has a letter of this script
+                 */
+                boolean uses(String text) {
+                    return text.chars().anyMatch(c -> c >= first && c <= last);
+                }
+
+                /**
+                 * @param base the font at 1 pt
+                 * @param size the size the comic font would have
+                 * @return the font at a size that looks as big as Bangers, slanted if this script needs it
+                 */
+                Font derive(Font base, float size) {
+                    Font sized = base.deriveFont(size * scale);
+                    return slant == 0f ? sized
+                            : sized.deriveFont(java.awt.geom.AffineTransform.getShearInstance(slant, 0));
+                }
+            }
+
+            private static final java.util.Map<Script, Font> SCRIPT_FONTS = new java.util.EnumMap<>(Script.class);
+
+            /**
+             * @param script a script
+             * @return its comic font at 1 pt, or {@code null} if it cannot be loaded
+             */
+            static synchronized Font scriptFont(Script script) {
+                if (!SCRIPT_FONTS.containsKey(script)) {
+                    Font font = null;
+                    try (java.io.InputStream in = Theme.class.getResourceAsStream(script.file)) {
+                        if (in != null) {
+                            font = Font.createFont(Font.TRUETYPE_FONT, in);
+                        }
+                    } catch (java.io.IOException | FontFormatException ex) {
+                        font = null;
+                    }
+                    SCRIPT_FONTS.put(script, font);
+                }
+                return SCRIPT_FONTS.get(script);
+            }
+
             static synchronized Font comicFont() {
                 if (!comicTried) {
                     comicTried = true;
@@ -233,7 +307,52 @@ public final class Theme {
         } catch (UnsupportedLookAndFeelException ignored) {
             // The default look and feel is fine.
         }
+        // Every label (also in drop-downs and tables) asks for a little more room than its text measures.
+        UIManager.put("LabelUI", RoomyLabelUI.class.getName());
         applyColorsAndFonts();
+    }
+
+    /**
+     * Extra width a text needs so it is never cut. When Windows enlarges everything (display scaling of 125 %, 150 %
+     * ...), Java measures a text at the normal size but draws it at the enlarged size, where the letters come out a
+     * little wider; without this room the end of a word would be cut off or replaced by "...".
+     *
+     * @param metrics the metrics of the text's font
+     * @param text    the text
+     * @return the extra pixels to add to the measured width
+     */
+    public static int textSlack(FontMetrics metrics, String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return (int) Math.ceil(metrics.stringWidth(text) * 0.1) + 4;
+    }
+
+    /**
+     * The label look of the program: the Metal label, but every label with text asks for {@link #textSlack} more
+     * width, so its words are never cut, whatever the display scaling.
+     */
+    public static final class RoomyLabelUI extends javax.swing.plaf.metal.MetalLabelUI {
+
+        private static final RoomyLabelUI SHARED = new RoomyLabelUI();
+
+        /**
+         * @param c the label
+         * @return the shared label look (it keeps no state per label)
+         */
+        public static javax.swing.plaf.ComponentUI createUI(JComponent c) {
+            return SHARED;
+        }
+
+        @Override
+        public Dimension getPreferredSize(JComponent c) {
+            Dimension size = super.getPreferredSize(c);
+            if (c instanceof JLabel label && label.getText() != null && !label.getText().isEmpty()
+                    && label.getClientProperty(javax.swing.plaf.basic.BasicHTML.propertyKey) == null) {
+                size.width += textSlack(label.getFontMetrics(label.getFont()), label.getText());
+            }
+            return size;
+        }
     }
 
     /**
@@ -969,32 +1088,6 @@ public final class Theme {
             g2.draw(shape);
             g2.dispose();
         }
-
-        /**
-         * Paints the background of a comic panel: a pale tint of the accent with halftone dots.
-         *
-         * @param g      graphics
-         * @param w      width
-         * @param h      height
-         * @param accent panel color
-         */
-        public static void paintPanel(Graphics2D g, int w, int h, Color accent) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            boolean light = Theme.mode() == Theme.Mode.LIGHT;
-            g2.setColor(light ? Theme.mix(candyColor(accent), Color.WHITE, 0.14) : Theme.mix(accent, Theme.surface(), 0.12));
-            g2.fillRect(0, 0, w, h);
-            g2.setColor(Theme.alpha(candyColor(accent), light ? 0.22 : 0.16));
-            for (int y = 6; y < h; y += 14) {
-                for (int x = 6 + (y / 14 % 2) * 7; x < w; x += 14) {
-                    g2.fill(new Ellipse2D.Double(x, y, 3.5, 3.5));
-                }
-            }
-            g2.setColor(inkColor());
-            g2.setStroke(new BasicStroke(4f));
-            g2.drawRect(2, 2, w - 4, h - 4);
-            g2.dispose();
-        }
     }
 
     /**
@@ -1269,7 +1362,6 @@ public final class Theme {
         private static final Shape MUZZLE = new Ellipse2D.Double(-0.21, 0.06, 0.42, 0.31);
         private static final Shape NOSE = nose();
         private static final Shape MOUTH = mouth();
-        private static final double SPRITE_MARGIN = 1.2;
         private static final int CACHE_LIMIT = 400;
         private static final Map<String, BufferedImage> CACHE = new HashMap<>();
 
@@ -1277,34 +1369,6 @@ public final class Theme {
          * Only static helpers; no objects of this class are created.
          */
         private Panther() {
-        }
-
-        /**
-         * Paints a 3D game piece: panther head on a round base.
-         *
-         * @param g2    graphics
-         * @param cx    center x
-         * @param cy    center y
-         * @param size  overall size in pixels
-         * @param fur   the player's color
-         * @param blink eye openness 0–1
-         */
-        public static void paintPiece(Graphics2D g2, double cx, double cy, double size, Color fur, double blink) {
-            double scale = Math.max(1, g2.getTransform().getScaleX());
-            int pixels = Math.max(8, (int) Math.round(size * scale));
-            int blinkStep = (int) Math.round(Math.max(0, Math.min(1, blink)) * 4);
-            String key = fur.getRGB() + "|" + pixels + "|" + blinkStep;
-            BufferedImage sprite = CACHE.get(key);
-            if (sprite == null) {
-                if (CACHE.size() > CACHE_LIMIT) {
-                    CACHE.clear();
-                }
-                sprite = renderPiece(pixels, fur, blinkStep / 4.0);
-                CACHE.put(key, sprite);
-            }
-            double drawn = size * SPRITE_MARGIN;
-            g2.drawImage(sprite, (int) Math.round(cx - drawn / 2), (int) Math.round(cy - drawn / 2),
-                    (int) Math.round(drawn), (int) Math.round(drawn), null);
         }
 
         /**
@@ -1874,58 +1938,6 @@ public final class Theme {
         }
 
         // ------------------------------------------------------------------ rendering
-
-        /**
-         * Draws a complete piece (base + head) into an image for the cache.
-         */
-        private static BufferedImage renderPiece(int pixels, Color fur, double blink) {
-            int side = (int) Math.ceil(pixels * SPRITE_MARGIN);
-            BufferedImage image = new BufferedImage(side, side, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = image.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g.translate(side / 2.0, side / 2.0);
-            g.scale(pixels, pixels);
-            Color rim = Theme.neon(fur);
-            drawBase(g, fur, rim);
-            g.translate(0, -0.13);
-            g.scale(0.8, 0.8);
-            drawHead(g, fur, rim, blink);
-            g.dispose();
-            return image;
-        }
-
-        /**
-         * The round token base with its shadow, in the player's color.
-         */
-        private static void drawBase(Graphics2D g, Color fur, Color rim) {
-            AffineTransform saved = g.getTransform();
-            g.translate(0.04, 0.47);
-            g.scale(1, 0.3);
-            g.setPaint(new RadialGradientPaint(new Point2D.Double(0, 0), 0.55f, new float[]{0f, 1f},
-                    new Color[]{Theme.alpha(Color.BLACK, 0.6), Theme.alpha(Color.BLACK, 0)}));
-            g.fill(new Ellipse2D.Double(-0.55, -0.55, 1.1, 1.1));
-            g.setTransform(saved);
-
-            Area band = new Area(new Rectangle2D.Double(-0.42, 0.32, 0.84, 0.1));
-            band.add(new Area(new Ellipse2D.Double(-0.42, 0.32, 0.84, 0.2)));
-            g.setPaint(new LinearGradientPaint(new Point2D.Double(-0.42, 0), new Point2D.Double(0.42, 0),
-                    new float[]{0f, 0.3f, 0.65f, 1f},
-                    new Color[]{Theme.mix(fur, FEATURES, 0.35), Theme.mix(fur, Color.WHITE, 0.8), fur,
-                            Theme.mix(fur, FEATURES, 0.3)},
-                    MultipleGradientPaint.CycleMethod.NO_CYCLE));
-            g.fill(band);
-            Ellipse2D top = new Ellipse2D.Double(-0.42, 0.22, 0.84, 0.2);
-            g.setPaint(new RadialGradientPaint(new Point2D.Double(-0.12, 0.28), 0.5f, new float[]{0f, 0.6f, 1f},
-                    new Color[]{Theme.mix(fur, Color.WHITE, 0.6), fur, Theme.mix(fur, FEATURES, 0.55)}));
-            g.fill(top);
-            g.setStroke(new BasicStroke(0.018f));
-            g.setColor(Theme.mix(fur, FEATURES, 0.3));
-            g.draw(band);
-            g.setColor(Theme.alpha(rim, 0.9));
-            g.setStroke(new BasicStroke(0.022f));
-            g.draw(top);
-        }
 
         /**
          * The shaded panther head: ears, face, muzzle, rim light, eyes, nose and mouth.
